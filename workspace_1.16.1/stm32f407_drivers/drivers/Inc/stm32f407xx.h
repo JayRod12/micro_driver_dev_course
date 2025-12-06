@@ -92,10 +92,10 @@
 typedef struct {
 	__vo uint32_t MODER;
 	__vo uint32_t OTYPER;
-	__vo uint32_t OSPEEDR;
-	__vo uint32_t PUPDR;
-	__vo uint32_t IDR;
-	__vo uint32_t ODR;
+	__vo uint32_t OSPEEDR; 	// speed
+	__vo uint32_t PUPDR; 	// pull up/down
+	__vo uint32_t IDR; 		// input data
+	__vo uint32_t ODR; 		// output data
 	__vo uint32_t BSSR;
 	__vo uint32_t LCKR;
 	__vo uint32_t AFR[2]; // low[0] and high[1] alternate function registers
@@ -217,6 +217,16 @@ typedef struct {
 
 /* SYSCFG */
 #define SYSCFG_PCLK_DI() 		NEG_BIT(RCC->APB2ENR, 14)
+
+
+/* GPIO Reset */
+#define GPIOA_RESET()	do { RCC->AHB1RSTR |= (1 << 0); RCC->AHB1RSTR &= (0 << 0); } while (0)
+#define GPIOB_RESET()	do { RCC->AHB1RSTR |= (1 << 1); RCC->AHB1RSTR |= (0 << 1); } while (0)
+#define GPIOC_RESET()	do { RCC->AHB1RSTR |= (1 << 2); RCC->AHB1RSTR |= (0 << 2); } while (0)
+#define GPIOD_RESET()	do { RCC->AHB1RSTR |= (1 << 3); RCC->AHB1RSTR |= (0 << 3); } while (0)
+#define GPIOE_RESET()	do { RCC->AHB1RSTR |= (1 << 4); RCC->AHB1RSTR |= (0 << 4); } while (0)
+#define GPIOF_RESET()	do { RCC->AHB1RSTR |= (1 << 5); RCC->AHB1RSTR |= (0 << 5); } while (0)
+#define GPIOG_RESET()	do { RCC->AHB1RSTR |= (1 << 6); RCC->AHB1RSTR |= (0 << 6); } while (0)
 
 /* Generic macros */
 
