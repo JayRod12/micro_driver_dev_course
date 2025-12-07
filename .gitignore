@@ -62,4 +62,14 @@ dkms.conf
 .settings
 [Rr]elease
 [Dd]ebug
-.launch
+*.launch
+
+# GDB
+.gdb_history
+
+# Clangd cache
+.cache/
+compile_commands.json
+
+# Logic analyzer captures
+Logic Captures/
