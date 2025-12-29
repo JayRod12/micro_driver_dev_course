@@ -7,57 +7,66 @@
 #include "stm32f407xx_gpio_driver.h"
 #include <stdint.h>
 #include <stdio.h>
+static uint8_t gpio_port_to_code(GPIO_RegDef_t *pGPIOx) {
+  if (pGPIOx == GPIOA)
+    return 0;
+  if (pGPIOx == GPIOB)
+    return 1;
+  if (pGPIOx == GPIOC)
+    return 2;
+  if (pGPIOx == GPIOD)
+    return 3;
+  if (pGPIOx == GPIOE)
+    return 4;
+  if (pGPIOx == GPIOF)
+    return 5;
+  if (pGPIOx == GPIOG)
+    return 6;
+  return 0;
+}
+
 /**
  * Peripheral Clock enable or disable. Takes a GPIO port base address and enable
  * (1) or disable (0)
  *
  * @param pGpioX base address of gpio peripheral
  * @param enOrDi ENABLE or DISABLE macros
- * */
-
+ */
 void GPIO_PeriClockControl(GPIO_RegDef_t *pGPIOx, uint8_t enOrDi) {
+  uint8_t portCode = gpio_port_to_code(pGPIOx);
   if (enOrDi == ENABLE) {
-    if (pGPIOx == GPIOA) {
-      GPIOA_PCLK_EN();
-    } else if (pGPIOx == GPIOB) {
-      GPIOB_PCLK_EN();
-    } else if (pGPIOx == GPIOC) {
-      GPIOC_PCLK_EN();
-    } else if (pGPIOx == GPIOD) {
-      GPIOD_PCLK_EN();
-    } else if (pGPIOx == GPIOE) {
-      GPIOE_PCLK_EN();
-    } else if (pGPIOx == GPIOF) {
-      GPIOF_PCLK_EN();
-    } else if (pGPIOx == GPIOG) {
-      GPIOG_PCLK_EN();
-    } else {
-      printf(
-          "Error: Unknown GPIO base address in GPIO_PeriClockControl(En): %p\n",
-          pGPIOx);
-    }
+    RCC->AHB1ENR |= (1 << portCode);
   } else {
-    assert(enOrDi == DISABLE);
-    if (pGPIOx == GPIOA) {
-      GPIOA_PCLK_DI();
-    } else if (pGPIOx == GPIOB) {
-      GPIOB_PCLK_DI();
-    } else if (pGPIOx == GPIOC) {
-      GPIOC_PCLK_DI();
-    } else if (pGPIOx == GPIOD) {
-      GPIOD_PCLK_DI();
-    } else if (pGPIOx == GPIOE) {
-      GPIOE_PCLK_DI();
-    } else if (pGPIOx == GPIOF) {
-      GPIOF_PCLK_DI();
-    } else if (pGPIOx == GPIOG) {
-      GPIOG_PCLK_DI();
-    } else {
-      printf(
-          "Error: Unknown GPIO base address in GPIO_PeriClockControl(Di): %p\n",
-          pGPIOx);
-    }
+    RCC->AHB1ENR &= ~(1 << portCode);
   }
+}
+
+static void configure_exticr(GPIO_RegDef_t *pGPIOx, uint32_t pinNumber) {
+  SYSCFG_PCLK_EN();
+  uint8_t portCode = gpio_port_to_code(pGPIOx);
+  uint8_t regIndex = pinNumber / 4;
+  uint8_t fieldOffset = (pinNumber % 4) * 4;
+  SYSCFG->EXTICR[regIndex] &= ~(0b1111 << fieldOffset);
+  SYSCFG->EXTICR[regIndex] |= (portCode << fieldOffset);
+}
+
+static void apply_moder(__vo uint32_t *moder, uint8_t mode,
+                        uint32_t pinNumber) {
+  uint32_t clearMask = ~(0b11 << (2 * pinNumber));
+  uint32_t modeMask = ((uint32_t)mode) << (2 * pinNumber);
+  *moder &= clearMask;
+  *moder |= modeMask;
+}
+
+static void set_irq_priority(uint8_t irqNumber, uint8_t irqPrio) {
+  const size_t kIrqsPerIpr = 4;
+  const size_t kBitsPerPrio = 8;
+  size_t index = irqNumber / kIrqsPerIpr;
+  size_t offset = kBitsPerPrio * (irqNumber % kIrqsPerIpr);
+  NVIC_IPR->reg[index] &= ~(0xFF << offset);
+  // skip unimplemented bits
+  NVIC_IPR->reg[index] |=
+      ((irqPrio << (kBitsPerPrio - NVIC_PRIO_BITS)) << offset);
 }
 
 /* Init and DeInit */
@@ -66,22 +75,35 @@ void GPIO_Init(GPIO_Handle_t *pGPIOHandle) {
   //	GPIO_PeriClockControl(pGPIOHandle->pGPIOx, ENABLE);
 
   const uint32_t pinNumber = pGPIOHandle->GPIO_PinConfig.GPIO_PinNumber;
+  GPIO_RegDef_t *pGPIOx = pGPIOHandle->pGPIOx;
 
   // MODER
   {
     // configure the mode of the pin
     const uint8_t mode = pGPIOHandle->GPIO_PinConfig.GPIO_PinMode;
     if (mode <= GPIO_MODE_ALTFN) {
-      // clear 2 bits
-      // each port uses 2 bits
-      // build a mask with all 1s except a 00 in the port's location
-      uint32_t clearMask = ~(0b11 << (2 * pinNumber));
-      uint32_t modeMask = ((uint32_t)mode) << (2 * pinNumber);
-      pGPIOHandle->pGPIOx->MODER &= clearMask;
-      pGPIOHandle->pGPIOx->MODER |= modeMask;
+      apply_moder(&pGPIOx->MODER, mode, pinNumber);
     } else {
-      // TODO: interrupt modes not implemented yet
-      return;
+      // Interrupt modes - configure as input in MODER
+      apply_moder(&pGPIOx->MODER, GPIO_MODE_IN, pinNumber);
+      // Configure edge trigger
+      if (mode == GPIO_MODE_IT_FT) {
+        // Falling edge trigger
+        EXTI->FTSR |= (1 << pinNumber);
+        EXTI->RTSR &= ~(1 << pinNumber);
+      } else if (mode == GPIO_MODE_IT_RT) {
+        // Rising edge trigger
+        EXTI->RTSR |= (1 << pinNumber);
+        EXTI->FTSR &= ~(1 << pinNumber);
+      } else if (mode == GPIO_MODE_IT_RFT) {
+        // Rising and falling edge trigger
+        EXTI->RTSR |= (1 << pinNumber);
+        EXTI->FTSR |= (1 << pinNumber);
+      }
+      // Configure SYSCFG to map GPIO port to EXTI line
+      configure_exticr(pGPIOx, pinNumber);
+      // Enable EXTI interrupt delivery
+      EXTI->IMR |= (1 << pinNumber);
     }
   }
 
@@ -189,5 +211,35 @@ void GPIO_ToggleOutputPin(GPIO_RegDef_t *pGPIOx, uint8_t pinNumber) {
 
 /* IRQ Configuration and ISR handling */
 void GPIO_IRQConfig(uint8_t irqNumber, uint8_t irqPrio,
-                    uint8_t enableOrDisable) {}
-void GPIO_IRQHandling(uint8_t pinNumber) {}
+                    uint8_t enableOrDisable) {
+  if (irqNumber > NVIC_IRQ_MAX) {
+    printf("Error(%s): irqNumber %d exceeds STM32F407 max (%d)\n", __func__,
+           irqNumber, NVIC_IRQ_MAX);
+    return;
+  }
+  // ISER0 = 0-31, ISER1 = 32-63, etc.
+  size_t index = irqNumber / 32;
+  size_t offset = irqNumber % 32;
+  if (enableOrDisable == ENABLE) {
+    set_irq_priority(irqNumber, irqPrio);
+    NVIC_ISER->reg[index] |= (1 << offset);
+  } else if (enableOrDisable == DISABLE) {
+    NVIC_ICER->reg[index] |= (1 << offset);
+  } else {
+    printf("Error(%s): unknown enableOrDisable value = %d\n", __func__,
+           enableOrDisable);
+  }
+}
+
+// Example (in reality this is done in user code)
+// Overwrites weak symbol in startup_stm32f407vgtx.s
+// void EXTI0_IRQHandler(void) {
+//   GPIO_IRQHandling(0);
+// }
+
+void GPIO_IRQHandling(uint8_t pinNumber) {
+  if (EXTI->PR & (1 << pinNumber)) {
+    printf("IRQ received on pin %d\n", pinNumber);
+    EXTI->PR |= (1 << pinNumber); // clear pending bit by writing 1
+  }
+}

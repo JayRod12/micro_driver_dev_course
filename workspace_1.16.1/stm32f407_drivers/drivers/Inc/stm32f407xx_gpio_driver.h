@@ -98,9 +98,29 @@ void GPIO_WriteToOutputPin(GPIO_RegDef_t *pGPIOx, uint8_t pinNumber,
                            uint8_t value);
 void GPIO_WriteToOutputPort(GPIO_RegDef_t *pGPIOx, uint16_t value);
 void GPIO_ToggleOutputPin(GPIO_RegDef_t *pGPIOx, uint8_t pinNumber);
-/* IRQ Configuration and ISR handling */
+
+/*
+ * Interrupt terminology.
+ *
+ * IRQ (Interrupt Request): The signal/number identifying which interrupt
+ * occurred (e.g., IRQ #6 for EXTI0).
+ *
+ * ISR (Interrupt Service Routine): The handler function that runs in response
+ * to an IRQ (e.g., EXTI0_IRQHandler).
+ */
+
+/*
+ * Configure a specific IRQ number with priority (only applicable when enabling)
+ */
 void GPIO_IRQConfig(uint8_t irqNumber, uint8_t irqPrio,
                     uint8_t enableOrDisable);
+/*
+ * Notify driver that an ISR has been handled by the user.
+ *
+ * Must be called from user code when the ISR is called. This takes care of
+ * reading and clearing the pending bit. Otherwise future interrupts won't be
+ * correctly delivered.
+ */
 void GPIO_IRQHandling(uint8_t pinNumber);
 
 #endif /* INC_STM32F407XX_GPIO_DRIVER_H_ */
