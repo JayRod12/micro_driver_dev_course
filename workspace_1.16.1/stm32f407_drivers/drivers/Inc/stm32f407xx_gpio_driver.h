@@ -61,6 +61,7 @@ typedef struct {
 /* @GPIO_PIN_OP_TYPE GPIO TYPER - output type register*/
 #define GPIO_OP_TYPE_PP 0 // output type push pull
 #define GPIO_OP_TYPE_OD 1 // output type open drain
+#define GPIO_OP_TYPE_MAX GPIO_OP_TYPE_OD
 
 /* @GPIO_PIN_SPEED GPIO Output speed */
 #define GPIO_SPEED_LOW 0

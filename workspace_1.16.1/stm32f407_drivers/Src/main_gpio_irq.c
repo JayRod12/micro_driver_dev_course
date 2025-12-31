@@ -27,20 +27,34 @@ int main(void) {
     GPIO_Init(&led);
   }
 
-  // Configure button on PA0 with falling edge interrupt
-  {
-    GPIO_PeriClockControl(GPIOA, ENABLE);
-    GPIO_Handle_t button;
-    button.pGPIOx = GPIOA;
-    button.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_0;
-    button.GPIO_PinConfig.GPIO_PinMode =
-        GPIO_MODE_IT_FT; // Falling edge trigger
-    button.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_HIGH;
-    button.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_PIN_NO_PUPD;
-    GPIO_Init(&button);
+  // Opt 1. Configure board button on PA0 with falling edge interrupt
+  // {
+  //   GPIO_PeriClockControl(GPIOA, ENABLE);
+  //   GPIO_Handle_t button;
+  //   button.pGPIOx = GPIOA;
+  //   button.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_0;
+  //   button.GPIO_PinConfig.GPIO_PinMode =
+  //       GPIO_MODE_IT_FT; // Falling edge trigger
+  //   button.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_HIGH;
+  //   button.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_PIN_NO_PUPD;
+  //   GPIO_Init(&button);
+  //
+  //   // Enable IRQ in NVIC
+  //   GPIO_IRQConfig(IRQ_NO_EXTI0, 15, ENABLE);
+  // }
 
-    // Enable IRQ in NVIC
-    GPIO_IRQConfig(IRQ_NO_EXTI0, 15, ENABLE);
+  // Opt 2. Configure external button on PD5 with falling edge interrupt
+  {
+    // gpiod peri control done for led already
+    GPIO_Handle_t pd5;
+    pd5.pGPIOx = GPIOD;
+    pd5.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_IT_FT;
+    pd5.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_7;
+    pd5.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    pd5.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_PIN_PU;
+    pd5.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_HIGH;
+    GPIO_Init(&pd5);
+    GPIO_IRQConfig(IRQ_NO_EXTI9_5, 15, ENABLE);
   }
 
   // Loop forever - interrupts will handle button presses
@@ -51,5 +65,11 @@ int main(void) {
 // ISR for EXTI0 (PA0 button)
 void EXTI0_IRQHandler(void) {
   GPIO_IRQHandling(0); // Clear pending bit
+  GPIO_ToggleOutputPin(GPIOD, GPIO_PIN_NO_12);
+}
+
+// ISR for EXTI5 (PD5 button)
+void EXTI9_5_IRQHandler(void) {
+  GPIO_IRQHandling(7); // Clear pending bit
   GPIO_ToggleOutputPin(GPIOD, GPIO_PIN_NO_12);
 }

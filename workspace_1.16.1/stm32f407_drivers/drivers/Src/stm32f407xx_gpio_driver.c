@@ -7,6 +7,7 @@
 #include "stm32f407xx_gpio_driver.h"
 #include <stdint.h>
 #include <stdio.h>
+
 static uint8_t gpio_port_to_code(GPIO_RegDef_t *pGPIOx) {
   if (pGPIOx == GPIOA)
     return 0;
@@ -23,22 +24,6 @@ static uint8_t gpio_port_to_code(GPIO_RegDef_t *pGPIOx) {
   if (pGPIOx == GPIOG)
     return 6;
   return 0;
-}
-
-/**
- * Peripheral Clock enable or disable. Takes a GPIO port base address and enable
- * (1) or disable (0)
- *
- * @param pGpioX base address of gpio peripheral
- * @param enOrDi ENABLE or DISABLE macros
- */
-void GPIO_PeriClockControl(GPIO_RegDef_t *pGPIOx, uint8_t enOrDi) {
-  uint8_t portCode = gpio_port_to_code(pGPIOx);
-  if (enOrDi == ENABLE) {
-    RCC->AHB1ENR |= (1 << portCode);
-  } else {
-    RCC->AHB1ENR &= ~(1 << portCode);
-  }
 }
 
 static void configure_exticr(GPIO_RegDef_t *pGPIOx, uint32_t pinNumber) {
@@ -63,10 +48,31 @@ static void set_irq_priority(uint8_t irqNumber, uint8_t irqPrio) {
   const size_t kBitsPerPrio = 8;
   size_t index = irqNumber / kIrqsPerIpr;
   size_t offset = kBitsPerPrio * (irqNumber % kIrqsPerIpr);
+  if (irqPrio >= (1 << NVIC_PRIO_BITS)) {
+    printf("Error(%s): irqPrio %d exceeds max (%d)\n", __func__, irqPrio,
+           (1 << NVIC_PRIO_BITS) - 1);
+    return;
+  }
   NVIC_IPR->reg[index] &= ~(0xFF << offset);
   // skip unimplemented bits
   NVIC_IPR->reg[index] |=
       ((irqPrio << (kBitsPerPrio - NVIC_PRIO_BITS)) << offset);
+}
+
+/**
+ * Peripheral Clock enable or disable. Takes a GPIO port base address and enable
+ * (1) or disable (0)
+ *
+ * @param pGpioX base address of gpio peripheral
+ * @param enOrDi ENABLE or DISABLE macros
+ */
+void GPIO_PeriClockControl(GPIO_RegDef_t *pGPIOx, uint8_t enOrDi) {
+  uint8_t portCode = gpio_port_to_code(pGPIOx);
+  if (enOrDi == ENABLE) {
+    RCC->AHB1ENR |= (1 << portCode);
+  } else {
+    RCC->AHB1ENR &= ~(1 << portCode);
+  }
 }
 
 /* Init and DeInit */
@@ -132,10 +138,15 @@ void GPIO_Init(GPIO_Handle_t *pGPIOHandle) {
   // optype
   {
     const uint8_t outputType = pGPIOHandle->GPIO_PinConfig.GPIO_PinOPType;
-    const uint32_t clearMask = ~(0b11 << pinNumber);
-    const uint32_t outputTypeMask = ((uint32_t)outputType) << pinNumber;
-    pGPIOHandle->pGPIOx->OTYPER &= clearMask;
-    pGPIOHandle->pGPIOx->OTYPER |= outputTypeMask;
+    if (outputType > GPIO_OP_TYPE_MAX) {
+      printf("Error! GPIO Pin output type must be between 0-%d, but found %d",
+             GPIO_OP_TYPE_MAX, outputType);
+    } else {
+      const uint32_t clearMask = ~(0b11 << pinNumber);
+      const uint32_t outputTypeMask = ((uint32_t)outputType) << pinNumber;
+      pGPIOHandle->pGPIOx->OTYPER &= clearMask;
+      pGPIOHandle->pGPIOx->OTYPER |= outputTypeMask;
+    }
   }
   // alt functionality
   if (pGPIOHandle->GPIO_PinConfig.GPIO_PinMode == GPIO_MODE_ALTFN) {
@@ -151,30 +162,11 @@ void GPIO_Init(GPIO_Handle_t *pGPIOHandle) {
     pGPIOHandle->pGPIOx->AFR[regIndex] |= setMask;
   }
 }
+
 void GPIO_DeInit(GPIO_RegDef_t *pGPIOx) {
-  // Deinit clock
-  // TODO: I think this is delegated to outside the API
-  //	GPIO_PeriClockControl(pGPIOx, DISABLE);
-  // RCC reset
-  if (pGPIOx == GPIOA) {
-    GPIOA_RESET();
-  } else if (pGPIOx == GPIOB) {
-    GPIOB_RESET();
-  } else if (pGPIOx == GPIOC) {
-    GPIOC_RESET();
-  } else if (pGPIOx == GPIOD) {
-    GPIOD_RESET();
-  } else if (pGPIOx == GPIOE) {
-    GPIOE_RESET();
-  } else if (pGPIOx == GPIOF) {
-    GPIOF_RESET();
-  } else if (pGPIOx == GPIOG) {
-    GPIOG_RESET();
-  } else {
-    printf(
-        "Error: Unknown GPIO base address in GPIO_PeriClockControl(En): %p\n",
-        pGPIOx);
-  }
+  uint8_t portCode = gpio_port_to_code(pGPIOx);
+  RCC->AHB1RSTR |= (1 << portCode);
+  RCC->AHB1RSTR &= ~(1 << portCode);
 }
 
 /* Read and Write */
@@ -186,6 +178,7 @@ uint8_t GPIO_ReadFromInputPin(GPIO_RegDef_t *pGPIOx, uint8_t pinNumber) {
 uint16_t GPIO_ReadFromInputPort(GPIO_RegDef_t *pGPIOx) {
   return (uint16_t)pGPIOx->IDR;
 }
+
 // Value written can be 0 or 1
 void GPIO_WriteToOutputPin(GPIO_RegDef_t *pGPIOx, uint8_t pinNumber,
                            uint8_t value) {
