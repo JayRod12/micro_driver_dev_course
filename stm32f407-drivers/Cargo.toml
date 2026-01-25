@@ -1,0 +1,15 @@
+[package]
+name = "stm32f407-drivers"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+panic-halt = "0.2"
+# stm32f4 = { version = "0.15", features = ["stm32f407", "rt"] }  # Removed - writing from scratch
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
